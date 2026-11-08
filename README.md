@@ -22,6 +22,10 @@ Fan and keyboard-backlight control for the **XMG APEX 16 MAX (M25)** (Schenker, 
   (which does **not** have the TUXEDO-only DMI check), giving 126 multicolor LEDs under
   `/sys/class/leds/rgb:kbd_backlight*`. `xfad` writes the colors with the driver's
   `buffer_input` switch so a whole-keyboard change is one USB frame, not 126.
+* The stock `ite_8291` clamps brightness (and color intensity) at 50, but this keyboard keeps
+  getting brighter up to 100 (checked with raw HID reports, `contrib/ite8291-raw-brightness.py`).
+  The module builds the driver with `contrib/ite8291-brightness-100.patch`, so sysfs, UPower
+  and GNOME's slider all get the 0..100 range.
 * Keyboard brightness is GNOME's: UPower adopts any `*kbd_backlight` LED, so GNOME's own
   Quick Settings slider, the Fn keys and idle dimming already work. `xfad` never re-applies a
   brightness of its own; `xfa kbd brightness` goes through UPower so everything stays in sync.

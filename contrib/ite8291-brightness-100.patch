@@ -1,0 +1,20 @@
+ite_8291: raise the keyboard brightness ceiling from 50 to 100
+
+The ITE 8291 (048d:600b) in the XMG APEX 16 MAX keeps getting brighter up to a
+brightness byte of 100 (0x64); tuxedo-drivers clamps at 0x32. Verified by hand with
+raw "09 02 <value>" feature reports (contrib/ite8291-raw-brightness.py): 10 < 50 < 100,
+255 is not brighter than 100. This constant also sets multi_max_intensity, so colors
+get the same 0..100 range. Machine-specific build; not meant for upstream as-is.
+
+--- a/src/ite_8291/ite_8291.c
++++ b/src/ite_8291/ite_8291.c
+@@ -104,7 +104,8 @@
+ 
+ // led_classdev names, default and max brightness
+ //#define ITE8291_KBD_BRIGHTNESS_MAX	0xff
+-#define ITE8291_KBD_BRIGHTNESS_MAX	0x32
++// 0x32 upstream; the XMG APEX 16 MAX keyboard is visibly brighter up to 0x64.
++#define ITE8291_KBD_BRIGHTNESS_MAX	0x64
+ #define ITE8291_KBD_BRIGHTNESS_DEFAULT	0x00
+ 
+ #define ITE8291_KB_COLOR_DEFAULT_RED	0xff

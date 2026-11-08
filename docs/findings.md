@@ -93,7 +93,11 @@ not found"). Harmless.
     drives per-fan duties from its `/etc/tailord/fan/default.json` curve. (The old tailord
     instance that had been running without an interface core-dumped on stop, SIGABRT.)
   * `ite_8291` binds the keyboard (048d:600b) and registers 126 multicolor LEDs,
-    intensities 0..50. tuxedo_keyboard exposes `fn_lock`, `charging_profile`,
+    intensities 0..50 upstream. Raw `09 02 <value>` feature reports show the panel gets
+    brighter up to 100 (255 is not brighter than 100), so we patch
+    `ITE8291_KBD_BRIGHTNESS_MAX` to 0x64 (`contrib/ite8291-brightness-100.patch`).
+    Whole-keyboard writes should use `device/controls/buffer_input` (1 then 0) or the
+    driver sends 126 USB frames (~6 s). tuxedo_keyboard exposes `fn_lock`, `charging_profile`,
     `TUXEDO Keyboard` input device. `charging_prio` is not offered for this board.
 * Register `0x0751` low bits are the performance profile (`uw_set_performance_profile_v1`):
   `0xA0` powersave, `0x00` enthusiast, `0x10` overboost. The firmware default here is

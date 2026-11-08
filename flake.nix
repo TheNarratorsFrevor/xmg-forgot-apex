@@ -71,7 +71,10 @@
         linuxKernel = prev.linuxKernel // {
           packagesFor = kernel: (prev.linuxKernel.packagesFor kernel).extend (lpfinal: lpprev: {
             tuxedo-drivers = lpprev.tuxedo-drivers.overrideAttrs (o: {
-              patches = (o.patches or [ ]) ++ [ ./contrib/tuxedo-drivers-xmg-apex16.patch ];
+              patches = (o.patches or [ ]) ++ [
+                ./contrib/tuxedo-drivers-xmg-apex16.patch
+                ./contrib/ite8291-brightness-100.patch
+              ];
             });
           });
         };
@@ -82,6 +85,11 @@
           cfg = config.services.xmg-forgot-apex;
           pkg = self.packages.${pkgs.system}.xfa;
           ext = self.packages.${pkgs.system}.xfa-gnome-extension;
+          # Stock tuxedo-drivers plus the brightness-ceiling fix; only ite_8291 is loaded
+          # from it. (With patchedTuxedoDrivers the overlay already carries both patches.)
+          keyboardDrivers = config.boot.kernelPackages.tuxedo-drivers.overrideAttrs (o: {
+            patches = (o.patches or [ ]) ++ pkgs.lib.optional (!cfg.patchedTuxedoDrivers) ./contrib/ite8291-brightness-100.patch;
+          });
         in
         {
           options.services.xmg-forgot-apex = {
@@ -94,7 +102,7 @@
             keyboard.enable = lib.mkOption {
               type = lib.types.bool;
               default = true;
-              description = "Load the ite_8291 module (from tuxedo-drivers) for the RGB keyboard backlight.";
+              description = "Load the ite_8291 module (tuxedo-drivers, with the 0..100 brightness patch) for the RGB keyboard backlight.";
             };
             gnomeExtension.enable = lib.mkOption {
               type = lib.types.bool;
@@ -112,7 +120,7 @@
 
             boot.kernelModules = [ "ec_sys" ] ++ lib.optionals cfg.keyboard.enable [ "ite_8291" ];
             boot.extraModprobeConfig = "options ec_sys write_support=1";
-            boot.extraModulePackages = lib.optional cfg.keyboard.enable config.boot.kernelPackages.tuxedo-drivers;
+            boot.extraModulePackages = lib.optional cfg.keyboard.enable keyboardDrivers;
 
             systemd.services.xfad = {
               description = "XMG Forgot Apex hardware daemon";
