@@ -60,8 +60,8 @@
       });
 
       apps = forAll (pkgs: {
-        default = { type = "app"; program = "${self.packages.${pkgs.system}.xfa}/bin/xfa"; };
-        xfad = { type = "app"; program = "${self.packages.${pkgs.system}.xfa}/bin/xfad"; };
+        default = { type = "app"; program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.xfa}/bin/xfa"; };
+        xfad = { type = "app"; program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.xfa}/bin/xfad"; };
       });
 
       # Overlay: tuxedo-drivers patched for this board (see contrib/). Only needed if you
@@ -83,8 +83,8 @@
       nixosModules.default = { config, lib, pkgs, ... }:
         let
           cfg = config.services.xmg-forgot-apex;
-          pkg = self.packages.${pkgs.system}.xfa;
-          ext = self.packages.${pkgs.system}.xfa-gnome-extension;
+          pkg = self.packages.${pkgs.stdenv.hostPlatform.system}.xfa;
+          ext = self.packages.${pkgs.stdenv.hostPlatform.system}.xfa-gnome-extension;
           # Stock tuxedo-drivers plus the brightness-ceiling fix; only ite_8291 is loaded
           # from it. (With patchedTuxedoDrivers the overlay already carries both patches.)
           keyboardDrivers = config.boot.kernelPackages.tuxedo-drivers.overrideAttrs (o: {
@@ -96,8 +96,8 @@
             enable = lib.mkEnableOption "XMG Forgot Apex (xfad daemon, xfa CLI, D-Bus policy, EC access)";
             interval = lib.mkOption {
               type = lib.types.float;
-              default = 2.0;
-              description = "Seconds between control-loop iterations.";
+              default = 1.0;
+              description = "Seconds between control-loop iterations (also the mode-button poll).";
             };
             keyboard.enable = lib.mkOption {
               type = lib.types.bool;
