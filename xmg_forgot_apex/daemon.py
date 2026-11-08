@@ -152,13 +152,27 @@ class Xfad:
 
     # ------------------------------------------------------------------ keyboard
     def _apply_keyboard(self) -> None:
+        """Re-apply the saved color. Brightness is left to GNOME/UPower on purpose."""
         ks = self.state["keyboard"]
         if not self.kbd.available:
             return
         if ks.get("color"):
             self.kbd.set_color(*ks["color"])
-        if ks.get("brightness") is not None:
-            self.kbd.set_brightness(ks["brightness"])
+
+    def _set_brightness(self, value: int) -> None:
+        """Prefer UPower so gsd-power (idle dim, OSD, GNOME's own slider) sees the change."""
+        value = max(0, min(self.kbd.max_brightness, int(value)))
+        try:
+            sysbus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            sysbus.call_sync(
+                "org.freedesktop.UPower", "/org/freedesktop/UPower/KbdBacklight",
+                "org.freedesktop.UPower.KbdBacklight", "SetBrightness",
+                GLib.Variant("(i)", (value,)), None, Gio.DBusCallFlags.NONE, 2000, None,
+            )
+            return
+        except GLib.Error as e:
+            log(f"UPower SetBrightness failed ({e.message}), writing sysfs directly")
+        self.kbd.set_brightness(value)
 
     # ------------------------------------------------------------------ D-Bus methods
     def handle_method(self, conn, sender, path, iface, method, params, invocation):
@@ -220,8 +234,7 @@ class Xfad:
         ks = self.state["keyboard"]
         if method == "SetBrightness":
             (v,) = params.unpack()
-            self.kbd.set_brightness(v)
-            ks["brightness"] = self.kbd.brightness()
+            self._set_brightness(v)
             self._emit_changed(IFACE_KEYBOARD, ["Brightness"])
         elif method == "SetColor":
             r, g, b = params.unpack()

@@ -4,5 +4,5 @@
   "description": "Fan and keyboard backlight control for the XMG APEX 16 MAX through the xfad daemon.",
   "shell-version": ["48", "49", "50"],
   "url": "https://git.nulliche.dev/Narrator/xmg-forgot-apex",
-  "version-name": "0.2.0"
+  "version-name": "0.2.1"
 }

@@ -111,17 +111,19 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         }
         this._manualItem = new SliderItem('Speed');
         this._manualItem.slider.connect('notify::value', () => this._onManualSlider());
+        this._manualItem.slider.connect('drag-begin', () => (this._dragging = true));
+        this._manualItem.slider.connect('drag-end', () => {
+            this._dragging = false;
+            this._onManualSlider();
+        });
         this._modeSection.addMenuItem(this._manualItem);
 
         // --- keyboard section
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Keyboard backlight'));
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Keyboard color'));
         this._kbdSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._kbdSection);
-        this._brightnessItem = new SliderItem('Brightness');
-        this._brightnessItem.slider.connect('notify::value', () => this._onBrightnessSlider());
-        this._kbdSection.addMenuItem(this._brightnessItem);
-
         const swatchRow = new PopupMenu.PopupBaseMenuItem({activate: false, reactive: false});
+        this._swatchRow = swatchRow;
         const box = new St.BoxLayout({style_class: 'xfa-swatches', x_expand: true});
         swatchRow.add_child(box);
         for (const [name, rgb] of COLOR_PRESETS) {
@@ -199,7 +201,7 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
             item.setOrnament(m === mode ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
 
         this._manualItem.visible = mode === 'manual';
-        if (mode === 'manual' && manual.length === 2) {
+        if (mode === 'manual' && manual.length === 2 && !this._dragging) {
             this._updating = true;
             this._manualItem.slider.value = manual[0] / 100;
             this._manualItem.setValueText(`${manual[0]}%`);
@@ -211,19 +213,8 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         if (!this._kbd)
             return;
         const available = this._kbd.Available === true;
-        this._brightnessItem.visible = available;
         this._kbdUnavailable.visible = !available;
-        const swatchRow = this._kbdSection._getMenuItems()[1];
-        if (swatchRow)
-            swatchRow.visible = available;
-        if (!available)
-            return;
-        const max = this._kbd.MaxBrightness || 1;
-        const cur = this._kbd.Brightness ?? 0;
-        this._updating = true;
-        this._brightnessItem.slider.value = cur / max;
-        this._brightnessItem.setValueText(`${Math.round(cur * 100 / max)}%`);
-        this._updating = false;
+        this._swatchRow.visible = available;
     }
 
     _setMode(mode) {
@@ -253,24 +244,6 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         });
     }
 
-    _onBrightnessSlider() {
-        if (this._updating || !this._kbd)
-            return;
-        const max = this._kbd.MaxBrightness || 1;
-        const value = Math.round(this._brightnessItem.slider.value * max);
-        this._brightnessItem.setValueText(`${Math.round(value * 100 / max)}%`);
-        if (this._brightnessTimer)
-            GLib.source_remove(this._brightnessTimer);
-        this._brightnessTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-            this._brightnessTimer = 0;
-            this._kbd.SetBrightnessRemote(value, (res, err) => {
-                if (err)
-                    console.error(`xfa: SetBrightness: ${err.message}`);
-            });
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
     _setColor(rgb) {
         if (!this._kbd)
             return;
@@ -283,10 +256,7 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
     destroy() {
         if (this._manualTimer)
             GLib.source_remove(this._manualTimer);
-        if (this._brightnessTimer)
-            GLib.source_remove(this._brightnessTimer);
         this._manualTimer = 0;
-        this._brightnessTimer = 0;
         this._fan = null;
         this._kbd = null;
         super.destroy();

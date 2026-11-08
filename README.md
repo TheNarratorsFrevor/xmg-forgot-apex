@@ -7,7 +7,7 @@ Fan and keyboard-backlight control for the **XMG APEX 16 MAX (M25)** (Schenker, 
 |---|---|
 | `xfad` | Root daemon. Talks to the EC directly, runs the fan curve, drives the keyboard LEDs, remembers your settings, re-applies them after resume. Exposes everything on the system D-Bus as `dev.nulliche.xfa`. |
 | `xfa` | CLI client for the daemon. |
-| `xfa@nulliche.dev` | GNOME Shell (48–50) Quick Settings tile: fan mode, manual speed slider, temps, keyboard brightness and color presets. |
+| `xfa@nulliche.dev` | GNOME Shell (48–50) Quick Settings tile: fan mode, manual speed slider, temps, keyboard color presets. |
 | `flake.nix` | `packages.xfa`, `packages.xfa-gnome-extension`, `nixosModules.default`, `overlays.default`. |
 
 ## How it works
@@ -20,7 +20,12 @@ Fan and keyboard-backlight control for the **XMG APEX 16 MAX (M25)** (Schenker, 
   `docs/findings.md`.
 * Keyboard: the ITE 8291 USB controller is handled by tuxedo-drivers' `ite_8291` module
   (which does **not** have the TUXEDO-only DMI check), giving 126 multicolor LEDs under
-  `/sys/class/leds/rgb:kbd_backlight*`. `xfad` writes those.
+  `/sys/class/leds/rgb:kbd_backlight*`. `xfad` writes the colors with the driver's
+  `buffer_input` switch so a whole-keyboard change is one USB frame, not 126.
+* Keyboard brightness is GNOME's: UPower adopts any `*kbd_backlight` LED, so GNOME's own
+  Quick Settings slider, the Fn keys and idle dimming already work. `xfad` never re-applies a
+  brightness of its own; `xfa kbd brightness` goes through UPower so everything stays in sync.
+  The extension therefore only offers colors.
 * Safety: when `xfad` stops, or the machine suspends, fans go back to EC automatic. Speeds
   below 20 % are clamped (fan stall), "off" is written as duty 1 (duty 0 makes the EC spin
   up for 3 minutes first).

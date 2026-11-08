@@ -7,7 +7,7 @@
     let
       systems = [ "x86_64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      version = "0.2.0";
+      version = "0.2.1";
     in
     {
       packages = forAll (pkgs: rec {

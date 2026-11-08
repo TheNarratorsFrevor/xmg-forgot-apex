@@ -18,8 +18,7 @@ DEFAULTS = {
         "manual": [40, 40],
     },
     "keyboard": {
-        "brightness": None,   # None = leave whatever the firmware/driver set
-        "color": None,        # [r, g, b] 0..255 or None
+        "color": None,        # [r, g, b] 0..255 or None; brightness is GNOME/UPower's job
     },
 }
 
