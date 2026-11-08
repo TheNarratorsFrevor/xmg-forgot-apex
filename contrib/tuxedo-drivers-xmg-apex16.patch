@@ -1,0 +1,42 @@
+Support XMG APEX 16 MAX (M25), board X6DR5xxK (Uniwill/Tongfang, board vendor NB02).
+
+1. Let the drivers load on this non-TUXEDO-branded board (tuxedo_compatibility_check
+   otherwise refuses: DMI vendor is SchenkerTechnologiesGmbH and the Ryzen 9 8945HX
+   is not in the legacy CPU skip list).
+2. Exclude the board from "universal fan control": the EC advertises the feature
+   (0x078e bit 6) and accepts the 0x07c5/0x07c6/0x0fxx custom tables, but ignores
+   them. The legacy full-fan-mode path (0x0751 bit 0x40 + 0x1804/0x1809) works.
+   Newer tuxedo-drivers have the same exception for sibling boards (X6FR5xxY etc.).
+
+Applies to tuxedo-drivers v4.20.1.
+
+--- a/src/tuxedo_compatibility_check/tuxedo_compatibility_check.c
++++ b/src/tuxedo_compatibility_check/tuxedo_compatibility_check.c
+@@ -215,6 +215,12 @@ static const struct dmi_system_id tuxedo_dmi_string_match[] = {
+ 			DMI_MATCH(DMI_CHASSIS_VENDOR, "TUXEDO"),
+ 		},
+ 	},
++	{
++		// XMG APEX 16 MAX (M25), Schenker Technologies, Uniwill/Tongfang barebone
++		.matches = {
++			DMI_MATCH(DMI_BOARD_NAME, "X6DR5xxK"),
++		},
++	},
+ 	{ }
+ };
+ 
+--- a/src/uniwill_keyboard.h
++++ b/src/uniwill_keyboard.h
+@@ -1522,6 +1522,12 @@
+ 		return 0;
+ 	}
+ 
++	// XMG APEX 16 MAX (M25): the EC claims universal fan control but ignores the
++	// custom fan tables; the legacy full-fan-mode path works.
++	if (dmi_match(DMI_BOARD_NAME, "X6DR5xxK")) {
++		return 0;
++	}
++
+ 	ret = uniwill_read_ec_ram(0x078e, &data);
+ 	if (ret < 0) {
+ 		return ret;

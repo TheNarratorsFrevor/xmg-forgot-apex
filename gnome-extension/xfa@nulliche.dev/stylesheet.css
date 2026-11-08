@@ -1,0 +1,22 @@
+.xfa-swatches {
+  spacing: 8px;
+  padding: 4px 0;
+}
+
+.xfa-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.xfa-swatch:hover,
+.xfa-swatch:focus {
+  border: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+.xfa-slider-value {
+  min-width: 3.5em;
+  text-align: right;
+  padding-left: 8px;
+}

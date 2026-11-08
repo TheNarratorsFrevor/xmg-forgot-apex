@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xmg-forgot-apex"
+version = "0.2.0"
+description = "Fan and keyboard control for the XMG APEX 16 MAX (M25): xfad daemon, xfa CLI, GNOME extension"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-2.0-or-later" }
+# Runtime dependency: PyGObject (gi) with GLib/Gio typelibs. Provided by Nix, see flake.nix.
+
+[project.scripts]
+xfa = "xmg_forgot_apex.cli:main"
+xfad = "xmg_forgot_apex.daemon:main"
+
+[tool.setuptools]
+packages = ["xmg_forgot_apex"]
