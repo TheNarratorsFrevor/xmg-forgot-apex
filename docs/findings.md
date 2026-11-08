@@ -97,7 +97,13 @@ not found"). Harmless.
     brighter up to 100 (255 is not brighter than 100), so we patch
     `ITE8291_KBD_BRIGHTNESS_MAX` to 0x64 (`contrib/ite8291-brightness-100.patch`).
     Whole-keyboard writes should use `device/controls/buffer_input` (1 then 0) or the
-    driver sends 126 USB frames (~6 s). tuxedo_keyboard exposes `fn_lock`, `charging_profile`,
+    driver sends 126 USB frames (~6 s).
+  * UPower's `KbdBacklight.SetBrightness` (1.91.4) writes to **all** matching LEDs, one
+    `openat`/`write` per `rgb:kbd_backlight*` (strace: 126 writes, 21 ms apart = 2.66 s per
+    call). GNOME's Quick Settings keyboard slider issues one call per slider step, so a drag
+    backed up for minutes. `contrib/ite8291-skip-noop-writes.patch` makes
+    `leds_set_brightness_mc` push a frame only when brightness or the key's color changed:
+    `SetBrightness` now takes 0.02 s. tuxedo_keyboard exposes `fn_lock`, `charging_profile`,
     `TUXEDO Keyboard` input device. `charging_prio` is not offered for this board.
 * Register `0x0751` low bits are the performance profile. TUXEDO's mapping
   (`uw_set_performance_profile_v1`): `0xA0` powersave, `0x00` enthusiast, `0x10` overboost.

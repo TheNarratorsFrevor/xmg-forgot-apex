@@ -53,6 +53,10 @@ balanced → Quiet, performance → Balanced, all in `auto` (EC) mode until you 
   getting brighter up to 100 (checked with raw HID reports, `contrib/ite8291-raw-brightness.py`).
   The module builds the driver with `contrib/ite8291-brightness-100.patch`, so sysfs, UPower
   and GNOME's slider all get the 0..100 range.
+* UPower writes a brightness change to *every* `*kbd_backlight*` LED, i.e. 126 times here,
+  and upstream `ite_8291` sends a full USB frame per write (2.6 s per change, and GNOME's
+  slider queues one change per step). `contrib/ite8291-skip-noop-writes.patch` makes the
+  driver skip the frame when nothing changed: 0.02 s per change.
 * Keyboard brightness is GNOME's: UPower adopts any `*kbd_backlight` LED, so GNOME's own
   Quick Settings slider, the Fn keys and idle dimming already work. `xfad` never re-applies a
   brightness of its own; `xfa kbd brightness` goes through UPower so everything stays in sync.

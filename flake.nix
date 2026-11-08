@@ -74,6 +74,7 @@
               patches = (o.patches or [ ]) ++ [
                 ./contrib/tuxedo-drivers-xmg-apex16.patch
                 ./contrib/ite8291-brightness-100.patch
+                ./contrib/ite8291-skip-noop-writes.patch
               ];
             });
           });
@@ -88,7 +89,10 @@
           # Stock tuxedo-drivers plus the brightness-ceiling fix; only ite_8291 is loaded
           # from it. (With patchedTuxedoDrivers the overlay already carries both patches.)
           keyboardDrivers = config.boot.kernelPackages.tuxedo-drivers.overrideAttrs (o: {
-            patches = (o.patches or [ ]) ++ pkgs.lib.optional (!cfg.patchedTuxedoDrivers) ./contrib/ite8291-brightness-100.patch;
+            patches = (o.patches or [ ]) ++ pkgs.lib.optionals (!cfg.patchedTuxedoDrivers) [
+              ./contrib/ite8291-brightness-100.patch
+              ./contrib/ite8291-skip-noop-writes.patch
+            ];
           });
         in
         {

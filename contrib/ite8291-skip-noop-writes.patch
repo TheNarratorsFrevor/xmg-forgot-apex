@@ -1,0 +1,60 @@
+ite_8291: skip the USB frame when a brightness write changes nothing
+
+UPower's KbdBacklight.SetBrightness writes the requested brightness to every
+/sys/class/leds/*kbd_backlight* LED. With 126 per-key LEDs that was 126 full
+USB frames (~21 ms each, ~2.6 s per call), and GNOME's keyboard slider queues
+one call per step, so a drag kept the device busy for minutes. Only push a
+frame when the brightness or this key's color actually changed. Writes that do
+change something, and buffered writes, behave as before.
+
+--- a/src/ite_8291/ite_8291.c
++++ b/src/ite_8291/ite_8291.c
+@@ -469,6 +469,27 @@
+ 		 mcled_cdev->subled_info[0].channel, brightness, device_data->brightness, mcled_cdev->subled_info[0].intensity,
+ 		 mcled_cdev->subled_info[1].intensity, mcled_cdev->subled_info[2].intensity);
+ 
++	/*
++	 * Only talk to the device when something actually changes. UPower (and anything
++	 * else iterating over /sys/class/leds/*kbd_backlight*) writes the same brightness to
++	 * every one of the 126 per-key LEDs; each unconditional write was a full ~20 ms
++	 * USB frame, i.e. ~2.6 s per brightness change.
++	 */
++	bool changed = device_data->brightness != brightness;
++	int row = mcled_cdev->subled_info[0].channel / ITE8291_LEDS_PER_ROW_MAX;
++	int col = mcled_cdev->subled_info[0].channel % ITE8291_LEDS_PER_ROW_MAX;
++	int idx_r = ITE8291_ROW_DATA_PADDING + (2 * ITE8291_LEDS_PER_ROW_MAX) + col;
++	int idx_g = ITE8291_ROW_DATA_PADDING + (1 * ITE8291_LEDS_PER_ROW_MAX) + col;
++	int idx_b = ITE8291_ROW_DATA_PADDING + (0 * ITE8291_LEDS_PER_ROW_MAX) + col;
++	u8 old_r = 0, old_g = 0, old_b = 0;
++	bool key_valid = row >= 0 && row < ITE8291_NR_ROWS && col >= 0 && col < ITE8291_LEDS_PER_ROW_MAX;
++
++	if (key_valid) {
++		old_r = device_data->row_data[row][idx_r];
++		old_g = device_data->row_data[row][idx_g];
++		old_b = device_data->row_data[row][idx_b];
++	}
++
+ 	device_data->brightness = brightness;
+ 
+ 	for (i = 0; i < ITE8291_NR_ROWS; ++i) {
+@@ -477,12 +498,17 @@
+ 		}
+ 	}
+ 
+-	row_data_set(hdev, device_data->row_data, mcled_cdev->subled_info[0].channel / ITE8291_LEDS_PER_ROW_MAX,
+-		     mcled_cdev->subled_info[0].channel % ITE8291_LEDS_PER_ROW_MAX,
++	row_data_set(hdev, device_data->row_data, row, col,
+ 		     mcled_cdev->subled_info[0].intensity, mcled_cdev->subled_info[1].intensity,
+ 		     mcled_cdev->subled_info[2].intensity);
+ 
+-	if (!ite8291_driver_data->device_buffer_input)
++	if (key_valid)
++		changed = changed
++			|| old_r != device_data->row_data[row][idx_r]
++			|| old_g != device_data->row_data[row][idx_g]
++			|| old_b != device_data->row_data[row][idx_b];
++
++	if (changed && !ite8291_driver_data->device_buffer_input)
+ 		ite8291_perkey_write_state(hdev);
+ }
+ 
