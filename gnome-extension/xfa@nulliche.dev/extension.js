@@ -46,8 +46,29 @@ const KBD_XML = `
   </interface>
 </node>`;
 
+const PROFILE_XML = `
+<node>
+  <interface name="dev.nulliche.xfa.Profile">
+    <property name="ActiveProfile" type="s" access="read"/>
+    <property name="Profiles" type="as" access="read"/>
+    <property name="EcMode" type="i" access="read"/>
+    <property name="SyncPowerProfiles" type="b" access="read"/>
+    <property name="Presets" type="as" access="read"/>
+    <method name="SetActiveProfile"><arg name="name" type="s" direction="in"/></method>
+    <method name="ApplyPreset"><arg name="preset" type="s" direction="in"/></method>
+  </interface>
+</node>`;
+
 const FanProxy = Gio.DBusProxy.makeProxyWrapper(FAN_XML);
 const KbdProxy = Gio.DBusProxy.makeProxyWrapper(KBD_XML);
+const ProfileProxy = Gio.DBusProxy.makeProxyWrapper(PROFILE_XML);
+
+const PROFILE_LABELS = {'power-saver': 'Power Saver', 'balanced': 'Balanced', 'performance': 'Performance'};
+const PROFILE_ICONS = {
+    'power-saver': 'power-profile-power-saver-symbolic',
+    'balanced': 'power-profile-balanced-symbolic',
+    'performance': 'power-profile-performance-symbolic',
+};
 
 const COLOR_PRESETS = [
     ['White', [255, 255, 255]],
@@ -95,9 +116,23 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         });
         this._fan = null;
         this._kbd = null;
+        this._profile = null;
         this._updating = false;
+        this._lastProfile = null;
 
         this.menu.setHeader('weather-windy-symbolic', 'XMG Forgot Apex', 'xfad not running');
+
+        // --- profile section (mirrors GNOME Power Mode; the hardware button cycles it)
+        this._profileSection = new PopupMenu.PopupMenuSection();
+        this.menu.addMenuItem(this._profileSection);
+        this._profileItems = {};
+        for (const name of ['power-saver', 'balanced', 'performance']) {
+            const item = new PopupMenu.PopupImageMenuItem(PROFILE_LABELS[name], PROFILE_ICONS[name]);
+            item.connect('activate', () => this._setProfile(name));
+            this._profileSection.addMenuItem(item);
+            this._profileItems[name] = item;
+        }
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Fans (this profile)'));
 
         // --- fan mode section
         this._modeSection = new PopupMenu.PopupMenuSection();
@@ -109,6 +144,9 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
             this._modeSection.addMenuItem(item);
             this._modeItems[mode] = item;
         }
+        this._presetMenu = new PopupMenu.PopupSubMenuMenuItem('Load curve preset');
+        this._modeSection.addMenuItem(this._presetMenu);
+
         this._manualItem = new SliderItem('Speed');
         this._manualItem.slider.connect('notify::value', () => this._onManualSlider());
         this._manualItem.slider.connect('drag-begin', () => (this._dragging = true));
@@ -140,12 +178,13 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         this._kbdUnavailable = new PopupMenu.PopupMenuItem('No keyboard backlight device', {reactive: false});
         this._kbdSection.addMenuItem(this._kbdUnavailable);
 
-        // Toggle click: auto <-> custom curve
+        // Toggle click: cycle the profile, like the hardware mode button.
         this.connect('clicked', () => {
-            if (!this._fan)
+            if (!this._profile)
                 return;
-            const mode = this._fan.Mode === 'auto' ? 'curve' : 'auto';
-            this._setMode(mode);
+            const order = ['power-saver', 'balanced', 'performance'];
+            const cur = order.indexOf(this._profile.ActiveProfile);
+            this._setProfile(order[(cur + 1) % order.length]);
         });
 
         this._connectProxies();
@@ -161,6 +200,15 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
             this._fan.connect('g-properties-changed', () => this._refreshFan());
             this._fan.connect('notify::g-name-owner', () => this._refreshFan());
             this._refreshFan();
+        });
+        new ProfileProxy(Gio.DBus.system, BUS_NAME, OBJECT_PATH, (proxy, error) => {
+            if (error) {
+                console.error(`xfa: profile proxy: ${error.message}`);
+                return;
+            }
+            this._profile = proxy;
+            this._profile.connect('g-properties-changed', (p, changed) => this._refreshProfile(changed.deepUnpack()));
+            this._refreshProfile({});
         });
         new KbdProxy(Gio.DBus.system, BUS_NAME, OBJECT_PATH, (proxy, error) => {
             if (error) {
@@ -189,7 +237,7 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         const mode = this._fan.Mode ?? 'auto';
         const target = this._fan.CurveTarget ?? -1;
 
-        const modeLabel = {auto: 'Auto', curve: 'Curve', manual: 'Manual'}[mode] ?? mode;
+        const modeLabel = {auto: 'EC fans', curve: 'Curve', manual: 'Manual'}[mode] ?? mode;
         this.subtitle = `${modeLabel} · ${duty[0] ?? '?'}% / ${duty[1] ?? '?'}%`;
         this.checked = mode !== 'auto';
         let header = `CPU ${temps[0] ?? '?'}°  GPU ${temps[1] ?? '?'}°  ·  fans ${duty[0] ?? '?'}% / ${duty[1] ?? '?'}%`;
@@ -215,6 +263,46 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         const available = this._kbd.Available === true;
         this._kbdUnavailable.visible = !available;
         this._swatchRow.visible = available;
+    }
+
+    _refreshProfile(changed) {
+        if (!this._profile)
+            return;
+        const active = this._profile.ActiveProfile ?? null;
+        for (const [name, item] of Object.entries(this._profileItems))
+            item.setOrnament(name === active ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+        this.title = active ? PROFILE_LABELS[active] ?? active : 'Fans';
+        if (active)
+            this.iconName = PROFILE_ICONS[active] ?? 'weather-windy-symbolic';
+        // Mode button / GNOME power mode changed while the menu is closed: show an OSD.
+        if (this._lastProfile && active && active !== this._lastProfile && !this.menu.isOpen) {
+            Main.osdWindowManager.show(-1, Gio.ThemedIcon.new(PROFILE_ICONS[active]),
+                `${PROFILE_LABELS[active] ?? active}`, null, null);
+        }
+        this._lastProfile = active;
+
+        if (this._presetMenu.menu.numMenuItems === 0) {
+            const presets = unpackAi(this._profile.get_cached_property('Presets'));
+            for (const preset of presets) {
+                const item = new PopupMenu.PopupMenuItem(preset);
+                item.connect('activate', () => {
+                    this._profile.ApplyPresetRemote(preset, (res, err) => {
+                        if (err)
+                            console.error(`xfa: ApplyPreset: ${err.message}`);
+                    });
+                });
+                this._presetMenu.menu.addMenuItem(item);
+            }
+        }
+    }
+
+    _setProfile(name) {
+        if (!this._profile)
+            return;
+        this._profile.SetActiveProfileRemote(name, (res, err) => {
+            if (err)
+                console.error(`xfa: SetActiveProfile: ${err.message}`);
+        });
     }
 
     _setMode(mode) {
@@ -259,6 +347,7 @@ class XfaToggle extends QuickSettings.QuickMenuToggle {
         this._manualTimer = 0;
         this._fan = null;
         this._kbd = null;
+        this._profile = null;
         super.destroy();
     }
 });

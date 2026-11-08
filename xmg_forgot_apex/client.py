@@ -12,7 +12,7 @@ gi.require_version("Gio", "2.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-from .dbus_api import BUS_NAME, IFACE_DAEMON, IFACE_FAN, IFACE_KEYBOARD, OBJECT_PATH  # noqa: E402
+from .dbus_api import BUS_NAME, IFACE_DAEMON, IFACE_FAN, IFACE_KEYBOARD, IFACE_PROFILE, OBJECT_PATH  # noqa: E402
 
 
 class DaemonUnavailable(RuntimeError):
@@ -94,6 +94,7 @@ class XfaClient:
             "daemon": self.get_all(IFACE_DAEMON),
             "fan": self.get_all(IFACE_FAN),
             "keyboard": self.get_all(IFACE_KEYBOARD),
+            "profile": self.get_all(IFACE_PROFILE),
         }
 
     def set_mode(self, mode: str):
@@ -107,6 +108,23 @@ class XfaClient:
 
     def set_source(self, src: str):
         self.call(IFACE_FAN, "SetSource", "(s)", src)
+
+    def set_active_profile(self, name: str):
+        self.call(IFACE_PROFILE, "SetActiveProfile", "(s)", name)
+
+    def set_sync_power_profiles(self, enabled: bool):
+        self.call(IFACE_PROFILE, "SetSyncPowerProfiles", "(b)", bool(enabled))
+
+    def get_profile(self, name: str) -> dict:
+        import json
+        return json.loads(self.call(IFACE_PROFILE, "GetProfile", "(s)", name).unpack()[0])
+
+    def set_profile(self, name: str, data: dict):
+        import json
+        self.call(IFACE_PROFILE, "SetProfile", "(ss)", name, json.dumps(data))
+
+    def apply_preset(self, preset: str):
+        self.call(IFACE_PROFILE, "ApplyPreset", "(s)", preset)
 
     def set_color(self, r: int, g: int, b: int):
         self.call(IFACE_KEYBOARD, "SetColor", "(iii)", r, g, b)

@@ -7,8 +7,35 @@ Fan and keyboard-backlight control for the **XMG APEX 16 MAX (M25)** (Schenker, 
 |---|---|
 | `xfad` | Root daemon. Talks to the EC directly, runs the fan curve, drives the keyboard LEDs, remembers your settings, re-applies them after resume. Exposes everything on the system D-Bus as `dev.nulliche.xfa`. |
 | `xfa` | CLI client for the daemon. |
-| `xfa@nulliche.dev` | GNOME Shell (48–50) Quick Settings tile: fan mode, manual speed slider, temps, keyboard color presets. |
+| `xfa@nulliche.dev` | GNOME Shell (48–50) Quick Settings tile: profile (tile click cycles it like the hardware button, OSD on button press), fan mode, curve presets, manual slider, temps, keyboard colors. |
 | `flake.nix` | `packages.xfa`, `packages.xfa-gnome-extension`, `nixosModules.default`, `overlays.default`. |
+
+## Performance profiles
+
+Three profiles, named like power-profiles-daemon's so they *are* GNOME's **Power Mode**:
+`power-saver`, `balanced`, `performance`. Measured on this machine (sustained all-core load):
+
+| Profile | EC mode (reg 0x0751) | CPU package | EC fan curve |
+|---|---|---|---|
+| power-saver | 0xA0 | ~46 W, ~1.1 GHz | quiet |
+| balanced | 0x20 | ~81 W, ~3.2 GHz | moderate |
+| performance | 0x30 | ~81 W, ~3.2 GHz | aggressive |
+
+`xfad` keeps three things in sync, in both directions:
+
+* the EC mode register (what the firmware uses for power limits and its own fan curve),
+* power-profiles-daemon's `ActiveProfile` (GNOME's Power Mode in Quick Settings, also
+  switched automatically on battery),
+* the **mode button** next to the power key. It only raises a WMI event, so the daemon polls
+  the EC register and treats a change as a button press. The extension shows an OSD.
+
+Each profile has its own fan settings (auto / curve / manual, curve points, source). The
+`Fan` D-Bus interface and `xfa fan`/`xfa curve` always act on the active profile. TUXEDO
+Control Center's fan tables ship as presets: Silent, Quiet, Balanced, Cool, Freezy
+(`xfa preset Cool`, or the "Load curve preset" submenu). Defaults: power-saver → Silent,
+balanced → Quiet, performance → Balanced, all in `auto` (EC) mode until you opt in.
+
+`xfa profile sync off` decouples the EC mode from GNOME's Power Mode if you ever want that.
 
 ## How it works
 
@@ -60,22 +87,25 @@ support, the `ite_8291` module, and installs `xfa` plus the extension.
 
 ```sh
 xfa status [--json]
-xfa fan auto                 # EC curve
-xfa fan curve                # xfad curve
-xfa fan manual 55            # both fans 55 %, or: xfa fan manual 70 40
-xfa fan source max|cpu|gpu   # which temperature the curve follows
-xfa curve                    # show;  xfa curve "40:0,55:25,65:40,75:55,85:75,95:100"
+xfa profile                       # active profile, EC mode, sync state
+xfa profile performance           # also switches GNOME's Power Mode
+xfa profile show                  # all three profiles with their fan settings
+xfa profile sync on|off
+xfa preset                        # list presets;  xfa preset Quiet  loads it (curve mode)
+xfa fan auto|curve|manual 55 [40] # fan settings of the active profile
+xfa fan source max|cpu|gpu
+xfa curve                         # show;  xfa curve "40:0,55:25,65:40,75:55,85:75,95:100"
 xfa kbd color 00ff80 | brightness 25 | off | key 12 ff0000 13 00ff00 ...
 xfa watch [-i 2]
-xfa ec read 0x1804 | write ADDR VAL | dump 0x0f00 0x0f5f   # raw EC, root, bypasses daemon
+xfa ec read 0x0751 | write ADDR VAL | dump 0x0f00 0x0f5f   # raw EC, root, bypasses daemon
 ```
 
 Settings persist in `/var/lib/xfa/state.json`.
 
 ## D-Bus API
 
-Bus `dev.nulliche.xfa`, object `/dev/nulliche/xfa`, interfaces `…Fan`, `…Keyboard`,
-`…Daemon`; properties update via `PropertiesChanged` every poll. The full introspection XML
+Bus `dev.nulliche.xfa`, object `/dev/nulliche/xfa`, interfaces `…Profile`, `…Fan`,
+`…Keyboard`, `…Daemon`; properties update via `PropertiesChanged` every poll. The full introspection XML
 is in `xmg_forgot_apex/dbus_api.py`. Anything (a Waybar module, a script) can use it.
 
 ## Development

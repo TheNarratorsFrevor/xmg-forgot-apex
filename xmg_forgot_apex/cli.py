@@ -7,7 +7,7 @@ import sys
 import time
 
 from . import __version__
-from .dbus_api import FAN_MODES, FAN_SOURCES, IFACE_FAN, IFACE_KEYBOARD
+from .dbus_api import FAN_MODES, FAN_SOURCES, IFACE_FAN, IFACE_KEYBOARD, IFACE_PROFILE, PROFILES
 from .fan import parse_curve
 
 
@@ -24,14 +24,15 @@ def _fmt_curve(points) -> str:
 
 
 def _print_status(st: dict) -> None:
-    f, k, d = st["fan"], st["keyboard"], st["daemon"]
+    f, k, d, p = st["fan"], st["keyboard"], st["daemon"], st["profile"]
     cpu, gpu = f["Temps"]
     d0, d1 = f["Duty"]
     target = f" (curve target {f['CurveTarget']}%)" if f["Mode"] == "curve" else ""
     manual = f" (manual {f['ManualSpeed'][0]}/{f['ManualSpeed'][1]}%)" if f["Mode"] == "manual" else ""
+    print(f"profile  {p['ActiveProfile']}  (EC mode 0x{p['EcMode']:02x}, GNOME power-mode sync {'on' if p['SyncPowerProfiles'] else 'off'})")
     print(f"temps    cpu {cpu}°C  gpu {gpu}°C")
     print(f"fans     fan0 {d0:3d}%  fan1 {d1:3d}%")
-    print(f"mode     {f['Mode']}{target}{manual}  source {f['Source']}")
+    print(f"fan mode {f['Mode']}{target}{manual}  source {f['Source']}")
     print(f"curve    {_fmt_curve(f['Curve'])}")
     if k["Available"]:
         r, g, b = k["Color"]
@@ -112,6 +113,42 @@ def cmd_kbd(args) -> int:
     return 0
 
 
+def cmd_profile(args) -> int:
+    c = _client()
+    if args.name == "sync":
+        if args.arg not in ("on", "off"):
+            sys.exit("xfa: profile sync on|off")
+        c.set_sync_power_profiles(args.arg == "on")
+    elif args.name == "show":
+        for name in PROFILES:
+            prof = c.get_profile(name)
+            fan = prof["fan"]
+            mark = "*" if name == c.get(IFACE_PROFILE, "ActiveProfile") else " "
+            print(f"{mark} {name:12s} fan {fan['mode']:6s} source {fan['source']:3s} manual {fan['manual'][0]}/{fan['manual'][1]}%  curve {_fmt_curve(fan['curve'])}")
+        return 0
+    elif args.name in PROFILES:
+        c.set_active_profile(args.name)
+    elif args.name is not None:
+        sys.exit(f"xfa: profile {{{'|'.join(PROFILES)}}} | show | sync on|off")
+    p = c.get_all(IFACE_PROFILE)
+    print(f"active {p['ActiveProfile']}  EC mode 0x{p['EcMode']:02x}  GNOME power-mode sync {'on' if p['SyncPowerProfiles'] else 'off'}")
+    return 0
+
+
+def cmd_preset(args) -> int:
+    c = _client()
+    presets = c.get(IFACE_PROFILE, "Presets")
+    if args.name:
+        if args.name not in presets:
+            sys.exit(f"xfa: preset must be one of {', '.join(presets)}")
+        c.apply_preset(args.name)
+        f = c.get_all(IFACE_FAN)
+        print(f"active profile now in curve mode with {args.name}: {_fmt_curve(f['Curve'])}")
+    else:
+        print("\n".join(presets))
+    return 0
+
+
 def cmd_watch(args) -> int:
     c = _client()
     try:
@@ -123,7 +160,8 @@ def cmd_watch(args) -> int:
                 print(json.dumps(f), flush=True)
             else:
                 extra = f" target {f['CurveTarget']}%" if f["Mode"] == "curve" else ""
-                print(f"{time.strftime('%H:%M:%S')}  cpu {cpu:3d}°C gpu {gpu:3d}°C  fan0 {d0:3d}% fan1 {d1:3d}%  {f['Mode']}{extra}", flush=True)
+                prof = c.get(IFACE_PROFILE, "ActiveProfile")
+                print(f"{time.strftime('%H:%M:%S')}  cpu {cpu:3d}°C gpu {gpu:3d}°C  fan0 {d0:3d}% fan1 {d1:3d}%  {prof} {f['Mode']}{extra}", flush=True)
             time.sleep(args.interval)
     except KeyboardInterrupt:
         return 0
@@ -175,6 +213,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("p0", nargs="?")
     s.add_argument("p1", nargs="?", type=int)
     s.set_defaults(func=cmd_fan)
+
+    s = sub.add_parser("profile", help="performance profile: power-saver | balanced | performance | show | sync on|off")
+    s.add_argument("name", nargs="?")
+    s.add_argument("arg", nargs="?")
+    s.set_defaults(func=cmd_profile)
+
+    s = sub.add_parser("preset", help="list fan curve presets, or load one into the active profile (curve mode)")
+    s.add_argument("name", nargs="?")
+    s.set_defaults(func=cmd_preset)
 
     s = sub.add_parser("curve", help='show or set the curve: xfa curve "45:0,60:30,80:60,95:100"')
     s.add_argument("points", nargs="?")

@@ -99,10 +99,30 @@ not found"). Harmless.
     Whole-keyboard writes should use `device/controls/buffer_input` (1 then 0) or the
     driver sends 126 USB frames (~6 s). tuxedo_keyboard exposes `fn_lock`, `charging_profile`,
     `TUXEDO Keyboard` input device. `charging_prio` is not offered for this board.
-* Register `0x0751` low bits are the performance profile (`uw_set_performance_profile_v1`):
-  `0xA0` powersave, `0x00` enthusiast, `0x10` overboost. The firmware default here is
-  `0x10`; `tuxedo_keyboard` writes `0x00` at probe. Bit `0x40` (full fan mode) can be
-  combined with any of them. Register `0x0741` bit 0 is the driver's "manual mode enable"
+* Register `0x0751` low bits are the performance profile. TUXEDO's mapping
+  (`uw_set_performance_profile_v1`): `0xA0` powersave, `0x00` enthusiast, `0x10` overboost.
+  On this machine the **mode button** cycles `0xA0 -> 0x30 -> 0x20 -> 0xA0` (bit `0x20` is set
+  in every button state), the firmware boots in `0x10`, and `tuxedo_keyboard` writes `0x00` at
+  probe. Measured with a 32-thread busy loop on AC (RAPL package power after 8 s):
+
+  | reg | pkg W | avg MHz | EC fan duty | xfa name |
+  |---|---|---|---|---|
+  | 0xA0 | 46 | 1094 | 110/200 | power-saver |
+  | 0x20 | 81 | 3181 | 136/200 | balanced |
+  | 0x30 | 81 | 3231 | 181/200 | performance |
+  | 0x10 | 52 | 2080 | 200/200 | (boot default, not used) |
+
+  The TDP registers `0x0783..0x0785` read 0 in every mode and the cTGP/Dynamic Boost block
+  `0x0743..0x0746` is all 0 (disabled), so power limits live inside the EC's mode table.
+  Bit `0x40` (manual fan speed) can be combined with any mode.
+* The mode button raises WMI event `0xB0` (`UNIWILL_OSD_MODE_CHANGE_KEY_EVENT`) and nothing
+  else: no input event (`libinput debug-events` stays silent). tuxedo_keyboard translates it
+  into Super+Alt+F6 to launch TCC. xfad instead polls `0x0751` once per second and treats a
+  change as a button press, then updates power-profiles-daemon.
+* NVIDIA: RTX 5070 Ti Laptop, default power limit 65 W, max 140 W (`nvidia-smi`). TUXEDO's
+  `tuxedo_nb02_nvidia_power_ctrl` drives cTGP offset / Dynamic Boost via `0x0743` (enable
+  bits 0x01 general, 0x02 DB, 0x04 cTGP), `0x0744` cTGP offset, `0x0745` TPP offset,
+  `0x0746` DB offset. Not touched by xfa yet. Register `0x0741` bit 0 is the driver's "manual mode enable"
   (set at probe, cleared at remove).
 * Timing detail: after the `0x40` bit is set, the EC runs 100% and ignores duty writes
   for a few seconds; tuxedo-drivers' ten quick writes right after enabling are lost, so the
